@@ -1,0 +1,7 @@
+{
+  "name": "Netlify test RO-Track",
+  "description": "A simple, mobile-friendly web application designed to replace physical record cards for managing RO rental customers. It allows for digital tracking of customer details, monthly payments, and service history.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
