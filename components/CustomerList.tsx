@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppContext } from '../App';
 import BulkImportModal from './BulkImportModal';
 import CustomerForm from './CustomerForm';
-import Fuse from 'fuse';
+import Fuse from 'fuse.js';
 import { exportCustomersToCSV } from '../utils/exportUtils';
 
 // Extend window type for webkitSpeechRecognition

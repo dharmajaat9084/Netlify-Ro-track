@@ -142,7 +142,8 @@ const Reminders: React.FC = () => {
                                         </div>
                                     </div>
                                 </li>
-                            )}}
+                            );
+                            })}
                         </ul>
                     ) : (
                         <p className="text-center text-gray-500 py-4 dark:text-gray-400">No reminders to send today. Everyone is up to date!</p>
