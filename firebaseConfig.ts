@@ -6,10 +6,6 @@ import { getFirestore } from "firebase/firestore";
 // TODO: Add your own Firebase configuration from your Firebase project console
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 
-// --- TEMPORARY DEBUGGING ---
-console.log("VITE_FIREBASE_API_KEY:", import.meta.env.VITE_FIREBASE_API_KEY);
-// -------------------------
-
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
