@@ -101,6 +101,9 @@ const App: React.FC = () => {
   const [dailyReminders, setDailyReminders] = useLocalStorage<Reminder[]>('ro-track-daily-reminders', []);
   const [remindersLastGenerated, setRemindersLastGenerated] = useLocalStorage<string>('ro-track-reminders-last-generated', '');
 
+  const memoizedDailyReminders = useMemo(() => dailyReminders, [dailyReminders]);
+  const memoizedRemindersLastGenerated = useMemo(() => remindersLastGenerated, [remindersLastGenerated]);
+
 
   // Determine which data source to use
   const customers = isGuestMode ? localCustomers : firebaseCustomers;
@@ -180,12 +183,12 @@ const App: React.FC = () => {
 
     const today = new Date().toISOString().split('T')[0]; // Get 'YYYY-MM-DD'
     
-    if (remindersLastGenerated !== today && customers.length > 0) {
+    if (memoizedRemindersLastGenerated !== today && customers.length > 0) {
         const newReminders = generateDailyReminders(customers, appSettings);
         setDailyReminders(newReminders);
         setRemindersLastGenerated(today);
     }
-  }, [customers, appSettings, loading, user, isGuestMode, remindersLastGenerated, setDailyReminders, setRemindersLastGenerated]);
+  }, [customers, appSettings, loading, user, isGuestMode, memoizedRemindersLastGenerated, setDailyReminders, setRemindersLastGenerated]);
   
   const forceReminderGeneration = useCallback(() => {
     if (customers.length > 0) {
@@ -240,10 +243,10 @@ const App: React.FC = () => {
       isGuestMode,
       loading,
       handleSignOut,
-      dailyReminders,
+      dailyReminders: memoizedDailyReminders,
       dismissReminder,
       forceReminderGeneration
-  }), [customers, view, theme, appSettings, user, isGuestMode, loading, dailyReminders, setCustomers, setAppSettings, setView, toggleTheme, handleSignOut, dismissReminder, forceReminderGeneration]);
+  }), [customers, view, theme, appSettings, user, isGuestMode, loading, memoizedDailyReminders, setCustomers, setAppSettings, setView, toggleTheme, handleSignOut, dismissReminder, forceReminderGeneration]);
 
   const renderContent = () => {
     if (loading) {
