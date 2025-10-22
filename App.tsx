@@ -8,7 +8,7 @@ import Reminders from './components/Reminders';
 import Login from './components/Login';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { auth, db, isFirebaseConfigured } from './firebaseConfig';
-import { doc, onSnapshot, setDoc, runTransaction } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, runTransaction, DocumentData } from 'firebase/firestore';
 import { initialCustomers } from './utils/initialData';
 import { generateDailyReminders } from './utils/reminderUtils';
 
@@ -28,6 +28,8 @@ interface AppContextType {
   dailyReminders: Reminder[];
   dismissReminder: (reminderId: string) => void;
   forceReminderGeneration: () => void;
+  fetchMoreCustomers: () => Promise<void>;
+  hasMoreCustomers: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -149,44 +151,31 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Firebase data listeners for authenticated users
+  // Firebase data listener for all user data
   useEffect(() => {
     if (!user || isGuestMode || !isFirebaseConfigured) {
       setFirebaseCustomers([]);
       setFirebaseAppSettings({ paymentLink: '' });
       return;
-    };
-    
+    }
+
     setLoading(true);
-    // Listener for main user data (customers, settings)
     const userDocRef = doc(db, 'users', user.uid);
-    const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
-        if (docSnap.exists()) {
-            const data = docSnap.data();
-            setFirebaseCustomers(data.customers || []);
-            setFirebaseAppSettings(data.appSettings || { paymentLink: '' });
-        } else {
-            // Fix: Use a transaction to ensure the document is created atomically.
-            // This prevents race conditions where the doc might be created
-            // by another process (e.g., setCustomers) after this check.
-            const initialData = { customers: [], appSettings: { paymentLink: '' } };
-            setDoc(userDocRef, initialData).catch(error => {
-                // We only log if the error is NOT that the document already exists.
-                // It can exist if another write operation completed since the onSnapshot was triggered.
-                if (error.code !== 'already-exists') {
-                    console.error("Failed to create initial user document:", error);
-                }
-            });
-        }
-        setLoading(false);
+    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setFirebaseCustomers(data.customers || []);
+        setFirebaseAppSettings(data.appSettings || { paymentLink: '' });
+      } else {
+        setDoc(userDocRef, { customers: [], appSettings: { paymentLink: '' } }, { merge: true });
+      }
+      setLoading(false);
     }, (error) => {
-        console.error("Error fetching user data:", error);
-        setLoading(false);
+      console.error("Error fetching user data:", error);
+      setLoading(false);
     });
 
-    return () => {
-      unsubscribeUser();
-    };
+    return () => unsubscribe();
   }, [user, isGuestMode]);
   
   const forceReminderGeneration = useCallback(() => {
@@ -212,6 +201,11 @@ const App: React.FC = () => {
   }, [theme]);
 
   const handleSignOut = async () => {
+    // Fix: Clear user-specific local storage on sign out to prevent data leakage.
+    localStorage.removeItem('ro-track-daily-reminders');
+    localStorage.removeItem('ro-track-reminders-last-generated');
+    setDailyReminders([]); // Clear in-memory state as well
+
     if (isGuestMode) {
       setIsGuestMode(false);
     } else if (isFirebaseConfigured) {
@@ -229,23 +223,30 @@ const App: React.FC = () => {
     );
   }, [setDailyReminders]);
 
-  const contextValue = useMemo(() => ({ 
-      customers, 
-      setCustomers, 
-      view, 
-      setView, 
-      theme, 
-      toggleTheme, 
-      appSettings, 
-      setAppSettings, 
-      user, 
+  // Perf: Split context value into stable and dynamic parts to avoid re-rendering consumers unnecessarily.
+  const stableContextValue = useMemo(() => ({
+      setCustomers,
+      setView,
+      toggleTheme,
+      setAppSettings,
+      handleSignOut,
+      dismissReminder,
+      forceReminderGeneration,
+      fetchMoreCustomers
+  }), [setCustomers, setView, toggleTheme, setAppSettings, handleSignOut, dismissReminder, forceReminderGeneration, fetchMoreCustomers]);
+
+  const contextValue = useMemo(() => ({
+      ...stableContextValue,
+      customers,
+      view,
+      theme,
+      appSettings,
+      user,
       isGuestMode,
       loading,
-      handleSignOut,
       dailyReminders,
-      dismissReminder,
-      forceReminderGeneration
-  }), [customers, view, theme, appSettings, user, isGuestMode, loading, dailyReminders, setCustomers, setAppSettings, setView, toggleTheme, handleSignOut, dismissReminder, forceReminderGeneration]);
+      hasMoreCustomers
+  }), [stableContextValue, customers, view, theme, appSettings, user, isGuestMode, loading, dailyReminders, hasMoreCustomers]);
 
   const renderContent = () => {
     if (loading) {
