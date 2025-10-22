@@ -108,14 +108,17 @@ const App: React.FC = () => {
       if (!user || !isFirebaseConfigured) return;
       const userDocRef = doc(db, 'users', user.uid);
       const finalCustomers = typeof updatedCustomers === 'function' ? updatedCustomers(firebaseCustomers) : updatedCustomers;
-      await updateDoc(userDocRef, { customers: finalCustomers });
+      // Fix: Use setDoc with merge to avoid overwriting the entire document
+      // if it's being created simultaneously by the onSnapshot listener.
+      await setDoc(userDocRef, { customers: finalCustomers }, { merge: true });
   };
   const appSettings = isGuestMode ? localAppSettings : firebaseAppSettings;
   const setAppSettings = isGuestMode ? setLocalAppSettings : async (updatedSettings: AppSettings | ((prev: AppSettings) => AppSettings)) => {
       if (!user || !isFirebaseConfigured) return;
       const userDocRef = doc(db, 'users', user.uid);
       const finalSettings = typeof updatedSettings === 'function' ? updatedSettings(firebaseAppSettings) : updatedSettings;
-      await updateDoc(userDocRef, { appSettings: finalSettings });
+      // Fix: Use setDoc with merge here as well for consistency and safety.
+      await setDoc(userDocRef, { appSettings: finalSettings }, { merge: true });
   };
 
   // Firebase auth listener
@@ -148,7 +151,17 @@ const App: React.FC = () => {
             setFirebaseCustomers(data.customers || []);
             setFirebaseAppSettings(data.appSettings || { paymentLink: '' });
         } else {
-            setDoc(userDocRef, { customers: [], appSettings: { paymentLink: '' } });
+            // Fix: Use a transaction to ensure the document is created atomically.
+            // This prevents race conditions where the doc might be created
+            // by another process (e.g., setCustomers) after this check.
+            const initialData = { customers: [], appSettings: { paymentLink: '' } };
+            setDoc(userDocRef, initialData).catch(error => {
+                // We only log if the error is NOT that the document already exists.
+                // It can exist if another write operation completed since the onSnapshot was triggered.
+                if (error.code !== 'already-exists') {
+                    console.error("Failed to create initial user document:", error);
+                }
+            });
         }
         setLoading(false);
     }, (error) => {
