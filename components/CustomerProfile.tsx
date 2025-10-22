@@ -123,20 +123,19 @@ const CustomerProfile: React.FC<{ customerId: string }> = ({ customerId }) => {
   }
   
   const handleDelete = async () => {
-    await setCustomers(customers.filter(c => c.id !== customerId));
+    await setCustomers(prev => prev.filter(c => c.id !== customerId));
     setIsDeleting(false);
     setView({ page: 'customers' });
   };
 
   const handleToggleReminder = (enabled: boolean) => {
-    const updatedCustomers = customers.map(c => c.id === customerId ? { ...c, enableMonthlyReminder: enabled } : c);
-    setCustomers(updatedCustomers);
+    setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, enableMonthlyReminder: enabled } : c));
   };
 
   const handleBulkUpdate = (newStatus: PaymentStatus) => {
     if (multiSelectedMonths.length === 0) return;
 
-    const updatedCustomers = customers.map(c => {
+    setCustomers(prev => prev.map(c => {
         if (c.id === customerId) {
             let newPayments = [...c.payments];
             multiSelectedMonths.forEach(selected => {
@@ -167,9 +166,8 @@ const CustomerProfile: React.FC<{ customerId: string }> = ({ customerId }) => {
             return { ...c, payments: newPayments };
         }
         return c;
-    });
+    }));
 
-    setCustomers(updatedCustomers);
     setIsMultiSelectMode(false);
     setMultiSelectedMonths([]);
   };
