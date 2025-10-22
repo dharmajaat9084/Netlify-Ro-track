@@ -25,13 +25,14 @@ const PaymentModal: React.FC<{
                 const isPaying = newStatus === PaymentStatus.Paid;
 
                 if (paymentIndex !== -1) {
-                    newPayments[paymentIndex] = {
-                        ...newPayments[paymentIndex],
-                        status: newStatus,
-                        notes: notes,
-                        paymentDate: isPaying ? new Date().toISOString() : undefined,
-                        amount: isPaying ? customer.monthlyRent : undefined,
-                    };
+                    const existingPayment = newPayments[paymentIndex];
+                    if (isPaying) {
+                        newPayments[paymentIndex] = { ...existingPayment, status: newStatus, notes, paymentDate: new Date().toISOString(), amount: customer.monthlyRent };
+                    } else {
+                        // Fix: Explicitly remove paymentDate and amount when marking as unpaid.
+                        const { paymentDate, amount, ...rest } = existingPayment;
+                        newPayments[paymentIndex] = { ...rest, status: newStatus, notes };
+                    }
                 } else {
                     // This case should ideally not happen if payments are pre-generated
                      newPayments.push({
@@ -144,13 +145,14 @@ const CustomerProfile: React.FC<{ customerId: string }> = ({ customerId }) => {
                 const note = isPaying ? `Bulk updated on ${new Date().toLocaleDateString()}` : '';
 
                 if (paymentIndex !== -1) {
-                    newPayments[paymentIndex] = {
-                        ...newPayments[paymentIndex],
-                        status: newStatus,
-                        paymentDate: isPaying ? new Date().toISOString() : undefined,
-                        amount: isPaying ? c.monthlyRent : undefined,
-                        notes: newPayments[paymentIndex].notes || note,
-                    };
+                    const existingPayment = newPayments[paymentIndex];
+                     if (isPaying) {
+                        newPayments[paymentIndex] = { ...existingPayment, status: newStatus, paymentDate: new Date().toISOString(), amount: c.monthlyRent, notes: existingPayment.notes || note };
+                    } else {
+                        // Fix: Explicitly remove paymentDate and amount when marking as unpaid.
+                        const { paymentDate, amount, ...rest } = existingPayment;
+                        newPayments[paymentIndex] = { ...rest, status: newStatus, notes: existingPayment.notes || note };
+                    }
                 } else {
                      newPayments.push({
                         year: selected.year,
