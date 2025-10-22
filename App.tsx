@@ -8,7 +8,7 @@ import Reminders from './components/Reminders';
 import Login from './components/Login';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { auth, db, isFirebaseConfigured } from './firebaseConfig';
-import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, runTransaction } from 'firebase/firestore';
 import { initialCustomers } from './utils/initialData';
 import { generateDailyReminders } from './utils/reminderUtils';
 
@@ -101,27 +101,39 @@ const App: React.FC = () => {
   const [dailyReminders, setDailyReminders] = useLocalStorage<Reminder[]>('ro-track-daily-reminders', []);
   const [remindersLastGenerated, setRemindersLastGenerated] = useLocalStorage<string>('ro-track-reminders-last-generated', '');
 
-  const memoizedDailyReminders = useMemo(() => dailyReminders, [dailyReminders]);
-  const memoizedRemindersLastGenerated = useMemo(() => remindersLastGenerated, [remindersLastGenerated]);
-
 
   // Determine which data source to use
   const customers = isGuestMode ? localCustomers : firebaseCustomers;
   const setCustomers = isGuestMode ? setLocalCustomers : async (updatedCustomers: Customer[] | ((prev: Customer[]) => Customer[])) => {
       if (!user || !isFirebaseConfigured) return;
       const userDocRef = doc(db, 'users', user.uid);
-      const finalCustomers = typeof updatedCustomers === 'function' ? updatedCustomers(firebaseCustomers) : updatedCustomers;
-      // Fix: Use setDoc with merge to avoid overwriting the entire document
-      // if it's being created simultaneously by the onSnapshot listener.
-      await setDoc(userDocRef, { customers: finalCustomers }, { merge: true });
+
+      try {
+        await runTransaction(db, async (transaction) => {
+            const userDoc = await transaction.get(userDocRef);
+            const currentCustomers = userDoc.exists() ? userDoc.data().customers || [] : [];
+            const finalCustomers = typeof updatedCustomers === 'function' ? updatedCustomers(currentCustomers) : updatedCustomers;
+            transaction.set(userDocRef, { customers: finalCustomers }, { merge: true });
+        });
+      } catch (e) {
+        console.error("Transaction failed: ", e);
+      }
   };
   const appSettings = isGuestMode ? localAppSettings : firebaseAppSettings;
   const setAppSettings = isGuestMode ? setLocalAppSettings : async (updatedSettings: AppSettings | ((prev: AppSettings) => AppSettings)) => {
       if (!user || !isFirebaseConfigured) return;
       const userDocRef = doc(db, 'users', user.uid);
-      const finalSettings = typeof updatedSettings === 'function' ? updatedSettings(firebaseAppSettings) : updatedSettings;
-      // Fix: Use setDoc with merge here as well for consistency and safety.
-      await setDoc(userDocRef, { appSettings: finalSettings }, { merge: true });
+
+       try {
+        await runTransaction(db, async (transaction) => {
+            const userDoc = await transaction.get(userDocRef);
+            const currentSettings = userDoc.exists() ? userDoc.data().appSettings || { paymentLink: '' } : { paymentLink: '' };
+            const finalSettings = typeof updatedSettings === 'function' ? updatedSettings(currentSettings) : updatedSettings;
+            transaction.set(userDocRef, { appSettings: finalSettings }, { merge: true });
+        });
+      } catch (e) {
+        console.error("Transaction failed: ", e);
+      }
   };
 
   // Firebase auth listener
@@ -177,19 +189,6 @@ const App: React.FC = () => {
     };
   }, [user, isGuestMode]);
   
-  // Effect for generating daily reminders locally
-  useEffect(() => {
-    if (loading || (!isGuestMode && !user)) return;
-
-    const today = new Date().toISOString().split('T')[0]; // Get 'YYYY-MM-DD'
-    
-    if (memoizedRemindersLastGenerated !== today && customers.length > 0) {
-        const newReminders = generateDailyReminders(customers, appSettings);
-        setDailyReminders(newReminders);
-        setRemindersLastGenerated(today);
-    }
-  }, [customers, appSettings, loading, user, isGuestMode, memoizedRemindersLastGenerated, setDailyReminders, setRemindersLastGenerated]);
-  
   const forceReminderGeneration = useCallback(() => {
     if (customers.length > 0) {
       const newReminders = generateDailyReminders(customers, appSettings);
@@ -243,10 +242,10 @@ const App: React.FC = () => {
       isGuestMode,
       loading,
       handleSignOut,
-      dailyReminders: memoizedDailyReminders,
+      dailyReminders,
       dismissReminder,
       forceReminderGeneration
-  }), [customers, view, theme, appSettings, user, isGuestMode, loading, memoizedDailyReminders, setCustomers, setAppSettings, setView, toggleTheme, handleSignOut, dismissReminder, forceReminderGeneration]);
+  }), [customers, view, theme, appSettings, user, isGuestMode, loading, dailyReminders, setCustomers, setAppSettings, setView, toggleTheme, handleSignOut, dismissReminder, forceReminderGeneration]);
 
   const renderContent = () => {
     if (loading) {
