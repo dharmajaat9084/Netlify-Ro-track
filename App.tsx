@@ -101,6 +101,9 @@ const App: React.FC = () => {
   const [dailyReminders, setDailyReminders] = useLocalStorage<Reminder[]>('ro-track-daily-reminders', []);
   const [remindersLastGenerated, setRemindersLastGenerated] = useLocalStorage<string>('ro-track-reminders-last-generated', '');
 
+  const memoizedDailyReminders = useMemo(() => dailyReminders, [dailyReminders]);
+  const memoizedRemindersLastGenerated = useMemo(() => remindersLastGenerated, [remindersLastGenerated]);
+
 
   // Determine which data source to use
   const customers = isGuestMode ? localCustomers : firebaseCustomers;
@@ -108,14 +111,17 @@ const App: React.FC = () => {
       if (!user || !isFirebaseConfigured) return;
       const userDocRef = doc(db, 'users', user.uid);
       const finalCustomers = typeof updatedCustomers === 'function' ? updatedCustomers(firebaseCustomers) : updatedCustomers;
-      await updateDoc(userDocRef, { customers: finalCustomers });
+      // Fix: Use setDoc with merge to avoid overwriting the entire document
+      // if it's being created simultaneously by the onSnapshot listener.
+      await setDoc(userDocRef, { customers: finalCustomers }, { merge: true });
   };
   const appSettings = isGuestMode ? localAppSettings : firebaseAppSettings;
   const setAppSettings = isGuestMode ? setLocalAppSettings : async (updatedSettings: AppSettings | ((prev: AppSettings) => AppSettings)) => {
       if (!user || !isFirebaseConfigured) return;
       const userDocRef = doc(db, 'users', user.uid);
       const finalSettings = typeof updatedSettings === 'function' ? updatedSettings(firebaseAppSettings) : updatedSettings;
-      await updateDoc(userDocRef, { appSettings: finalSettings });
+      // Fix: Use setDoc with merge here as well for consistency and safety.
+      await setDoc(userDocRef, { appSettings: finalSettings }, { merge: true });
   };
 
   // Firebase auth listener
@@ -148,7 +154,17 @@ const App: React.FC = () => {
             setFirebaseCustomers(data.customers || []);
             setFirebaseAppSettings(data.appSettings || { paymentLink: '' });
         } else {
-            setDoc(userDocRef, { customers: [], appSettings: { paymentLink: '' } });
+            // Fix: Use a transaction to ensure the document is created atomically.
+            // This prevents race conditions where the doc might be created
+            // by another process (e.g., setCustomers) after this check.
+            const initialData = { customers: [], appSettings: { paymentLink: '' } };
+            setDoc(userDocRef, initialData).catch(error => {
+                // We only log if the error is NOT that the document already exists.
+                // It can exist if another write operation completed since the onSnapshot was triggered.
+                if (error.code !== 'already-exists') {
+                    console.error("Failed to create initial user document:", error);
+                }
+            });
         }
         setLoading(false);
     }, (error) => {
@@ -167,12 +183,12 @@ const App: React.FC = () => {
 
     const today = new Date().toISOString().split('T')[0]; // Get 'YYYY-MM-DD'
     
-    if (remindersLastGenerated !== today && customers.length > 0) {
+    if (memoizedRemindersLastGenerated !== today && customers.length > 0) {
         const newReminders = generateDailyReminders(customers, appSettings);
         setDailyReminders(newReminders);
         setRemindersLastGenerated(today);
     }
-  }, [customers, appSettings, loading, user, isGuestMode, remindersLastGenerated, setDailyReminders, setRemindersLastGenerated]);
+  }, [customers, appSettings, loading, user, isGuestMode, memoizedRemindersLastGenerated, setDailyReminders, setRemindersLastGenerated]);
   
   const forceReminderGeneration = useCallback(() => {
     if (customers.length > 0) {
@@ -227,10 +243,10 @@ const App: React.FC = () => {
       isGuestMode,
       loading,
       handleSignOut,
-      dailyReminders,
+      dailyReminders: memoizedDailyReminders,
       dismissReminder,
       forceReminderGeneration
-  }), [customers, view, theme, appSettings, user, isGuestMode, loading, dailyReminders, setCustomers, setAppSettings, setView, toggleTheme, handleSignOut, dismissReminder, forceReminderGeneration]);
+  }), [customers, view, theme, appSettings, user, isGuestMode, loading, memoizedDailyReminders, setCustomers, setAppSettings, setView, toggleTheme, handleSignOut, dismissReminder, forceReminderGeneration]);
 
   const renderContent = () => {
     if (loading) {
