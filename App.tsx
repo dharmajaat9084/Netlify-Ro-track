@@ -28,8 +28,6 @@ interface AppContextType {
   dailyReminders: Reminder[];
   dismissReminder: (reminderId: string) => void;
   forceReminderGeneration: () => void;
-  fetchMoreCustomers: () => Promise<void>;
-  hasMoreCustomers: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -231,9 +229,8 @@ const App: React.FC = () => {
       setAppSettings,
       handleSignOut,
       dismissReminder,
-      forceReminderGeneration,
-      fetchMoreCustomers
-  }), [setCustomers, setView, toggleTheme, setAppSettings, handleSignOut, dismissReminder, forceReminderGeneration, fetchMoreCustomers]);
+      forceReminderGeneration
+  }), [setCustomers, setView, toggleTheme, setAppSettings, handleSignOut, dismissReminder, forceReminderGeneration]);
 
   const contextValue = useMemo(() => ({
       ...stableContextValue,
@@ -244,9 +241,8 @@ const App: React.FC = () => {
       user,
       isGuestMode,
       loading,
-      dailyReminders,
-      hasMoreCustomers
-  }), [stableContextValue, customers, view, theme, appSettings, user, isGuestMode, loading, dailyReminders, hasMoreCustomers]);
+      dailyReminders
+  }), [stableContextValue, customers, view, theme, appSettings, user, isGuestMode, loading, dailyReminders]);
 
   const renderContent = () => {
     if (loading) {
