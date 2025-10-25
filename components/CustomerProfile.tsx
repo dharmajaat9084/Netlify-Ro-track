@@ -25,14 +25,13 @@ const PaymentModal: React.FC<{
                 const isPaying = newStatus === PaymentStatus.Paid;
 
                 if (paymentIndex !== -1) {
-                    const existingPayment = newPayments[paymentIndex];
-                    if (isPaying) {
-                        newPayments[paymentIndex] = { ...existingPayment, status: newStatus, notes, paymentDate: new Date().toISOString(), amount: customer.monthlyRent };
-                    } else {
-                        // Fix: Explicitly remove paymentDate and amount when marking as unpaid.
-                        const { paymentDate, amount, ...rest } = existingPayment;
-                        newPayments[paymentIndex] = { ...rest, status: newStatus, notes };
-                    }
+                    newPayments[paymentIndex] = {
+                        ...newPayments[paymentIndex],
+                        status: newStatus,
+                        notes: notes,
+                        paymentDate: isPaying ? new Date().toISOString() : undefined,
+                        amount: isPaying ? customer.monthlyRent : undefined,
+                    };
                 } else {
                     // This case should ideally not happen if payments are pre-generated
                      newPayments.push({
@@ -123,19 +122,20 @@ const CustomerProfile: React.FC<{ customerId: string }> = ({ customerId }) => {
   }
   
   const handleDelete = async () => {
-    await setCustomers(prev => prev.filter(c => c.id !== customerId));
+    await setCustomers(customers.filter(c => c.id !== customerId));
     setIsDeleting(false);
     setView({ page: 'customers' });
   };
 
   const handleToggleReminder = (enabled: boolean) => {
-    setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, enableMonthlyReminder: enabled } : c));
+    const updatedCustomers = customers.map(c => c.id === customerId ? { ...c, enableMonthlyReminder: enabled } : c);
+    setCustomers(updatedCustomers);
   };
 
   const handleBulkUpdate = (newStatus: PaymentStatus) => {
     if (multiSelectedMonths.length === 0) return;
 
-    setCustomers(prev => prev.map(c => {
+    const updatedCustomers = customers.map(c => {
         if (c.id === customerId) {
             let newPayments = [...c.payments];
             multiSelectedMonths.forEach(selected => {
@@ -144,14 +144,13 @@ const CustomerProfile: React.FC<{ customerId: string }> = ({ customerId }) => {
                 const note = isPaying ? `Bulk updated on ${new Date().toLocaleDateString()}` : '';
 
                 if (paymentIndex !== -1) {
-                    const existingPayment = newPayments[paymentIndex];
-                     if (isPaying) {
-                        newPayments[paymentIndex] = { ...existingPayment, status: newStatus, paymentDate: new Date().toISOString(), amount: c.monthlyRent, notes: existingPayment.notes || note };
-                    } else {
-                        // Fix: Explicitly remove paymentDate and amount when marking as unpaid.
-                        const { paymentDate, amount, ...rest } = existingPayment;
-                        newPayments[paymentIndex] = { ...rest, status: newStatus, notes: existingPayment.notes || note };
-                    }
+                    newPayments[paymentIndex] = {
+                        ...newPayments[paymentIndex],
+                        status: newStatus,
+                        paymentDate: isPaying ? new Date().toISOString() : undefined,
+                        amount: isPaying ? c.monthlyRent : undefined,
+                        notes: newPayments[paymentIndex].notes || note,
+                    };
                 } else {
                      newPayments.push({
                         year: selected.year,
@@ -166,8 +165,9 @@ const CustomerProfile: React.FC<{ customerId: string }> = ({ customerId }) => {
             return { ...c, payments: newPayments };
         }
         return c;
-    }));
+    });
 
+    setCustomers(updatedCustomers);
     setIsMultiSelectMode(false);
     setMultiSelectedMonths([]);
   };

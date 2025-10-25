@@ -1,14 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAppContext } from '../App';
 
 const Reminders: React.FC = () => {
     const { appSettings, setAppSettings, dailyReminders: reminders, dismissReminder, forceReminderGeneration } = useAppContext();
     const [paymentLink, setPaymentLink] = useState(appSettings.paymentLink || '');
-
-    // Perf: Generate reminders only when this component is viewed.
-    useEffect(() => {
-        forceReminderGeneration();
-    }, [forceReminderGeneration]);
     const [copySuccess, setCopySuccess] = useState(''); // Holds the ID of the reminder whose message was copied
     const [selectedLanguages, setSelectedLanguages] = useState<Record<string, 'en' | 'hi'>>({});
 
@@ -147,8 +142,7 @@ const Reminders: React.FC = () => {
                                         </div>
                                     </div>
                                 </li>
-                            );
-                            })}
+                            )}}
                         </ul>
                     ) : (
                         <p className="text-center text-gray-500 py-4 dark:text-gray-400">No reminders to send today. Everyone is up to date!</p>

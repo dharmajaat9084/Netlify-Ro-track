@@ -71,8 +71,8 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onClose, customerToEdit }) 
                 monthlyRent: rent,
                 enableMonthlyReminder: enableMonthlyReminder,
             };
-             // Fix: Pass a function to setCustomers to ensure the transaction gets the latest state.
-            await setCustomers(prev => prev.map(c => c.id === customerToEdit.id ? updatedCustomer : c));
+            const updatedCustomers = customers.map(c => c.id === customerToEdit.id ? updatedCustomer : c);
+            await setCustomers(updatedCustomers);
         } else {
             const newCustomer: Customer = {
                 id: crypto.randomUUID(),
@@ -86,8 +86,8 @@ const CustomerForm: React.FC<CustomerFormProps> = ({ onClose, customerToEdit }) 
                 payments: generatePaymentsForCustomer(new Date(installationDate)),
                 enableMonthlyReminder: enableMonthlyReminder,
             };
-            // Fix: Pass a function to setCustomers to ensure the transaction gets the latest state.
-            await setCustomers(prev => [...prev, newCustomer]);
+            const updatedCustomers = [...customers, newCustomer];
+            await setCustomers(updatedCustomers);
         }
         onClose();
     };

@@ -4,11 +4,11 @@
 [build]
   # Setting the build command to an empty string is crucial.
     # It tells Netlify: "Do not run 'npm install' or any other build script."
-      command = "npm run build"
+      command = ""
         
           # This tells Netlify that your website's files (like index.html)
             # are in the main root directory of your project.
-              publish = "dist"
+              publish = "."
 
               # This section sets the environment for the build process.
               [build.environment]

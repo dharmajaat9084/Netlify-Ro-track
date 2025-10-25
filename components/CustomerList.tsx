@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppContext } from '../App';
 import BulkImportModal from './BulkImportModal';
 import CustomerForm from './CustomerForm';
-import Fuse from 'fuse.js';
+import Fuse from 'fuse';
 import { exportCustomersToCSV } from '../utils/exportUtils';
 
 // Extend window type for webkitSpeechRecognition
@@ -65,7 +65,6 @@ const CustomerList: React.FC = () => {
     const { customers, setView } = useAppContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [isAdding, setIsAdding] = useState(false);
-    const [visibleCustomers, setVisibleCustomers] = useState(10);
     const [isBulkImporting, setIsBulkImporting] = useState(false);
     
     const [isListening, setIsListening] = useState(false);
@@ -140,20 +139,12 @@ const CustomerList: React.FC = () => {
         return new Fuse(customers, options);
     }, [customers]);
 
-    const allFilteredCustomers = useMemo(() => {
+    const filteredCustomers = useMemo(() => {
         if (!searchTerm.trim()) {
             return [...customers].sort((a, b) => a.serialNumber - b.serialNumber);
         }
         return fuse.search(searchTerm).map(result => result.item);
     }, [customers, searchTerm, fuse]);
-
-    const displayedCustomers = useMemo(() => {
-        return allFilteredCustomers.slice(0, visibleCustomers);
-    }, [allFilteredCustomers, visibleCustomers]);
-
-    const handleLoadMore = () => {
-        setVisibleCustomers(prev => prev + 10);
-    };
 
     return (
         <div className="space-y-6">
@@ -227,7 +218,7 @@ const CustomerList: React.FC = () => {
 
             <div className="bg-white shadow-md rounded-lg overflow-hidden dark:bg-gray-800">
                 <ul role="list" className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {displayedCustomers.map(customer => (
+                    {filteredCustomers.map(customer => (
                         <li key={customer.id} onClick={() => setView({ page: 'profile', customerId: customer.id })} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700">
                             <div className="flex items-center px-4 py-4 sm:px-6">
                                 <div className="min-w-0 flex-1 flex items-center">
@@ -263,16 +254,6 @@ const CustomerList: React.FC = () => {
                     ))}
                 </ul>
             </div>
-            {allFilteredCustomers.length > visibleCustomers && (
-                <div className="mt-6 text-center">
-                    <button
-                        onClick={handleLoadMore}
-                        className="inline-flex items-center rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-700"
-                    >
-                        Load More Customers
-                    </button>
-                </div>
-            )}
         </div>
     );
 };

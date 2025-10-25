@@ -8,7 +8,7 @@ import Reminders from './components/Reminders';
 import Login from './components/Login';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { auth, db, isFirebaseConfigured } from './firebaseConfig';
-import { doc, onSnapshot, setDoc, runTransaction, DocumentData } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { initialCustomers } from './utils/initialData';
 import { generateDailyReminders } from './utils/reminderUtils';
 
@@ -107,33 +107,15 @@ const App: React.FC = () => {
   const setCustomers = isGuestMode ? setLocalCustomers : async (updatedCustomers: Customer[] | ((prev: Customer[]) => Customer[])) => {
       if (!user || !isFirebaseConfigured) return;
       const userDocRef = doc(db, 'users', user.uid);
-
-      try {
-        await runTransaction(db, async (transaction) => {
-            const userDoc = await transaction.get(userDocRef);
-            const currentCustomers = userDoc.exists() ? userDoc.data().customers || [] : [];
-            const finalCustomers = typeof updatedCustomers === 'function' ? updatedCustomers(currentCustomers) : updatedCustomers;
-            transaction.set(userDocRef, { customers: finalCustomers }, { merge: true });
-        });
-      } catch (e) {
-        console.error("Transaction failed: ", e);
-      }
+      const finalCustomers = typeof updatedCustomers === 'function' ? updatedCustomers(firebaseCustomers) : updatedCustomers;
+      await updateDoc(userDocRef, { customers: finalCustomers });
   };
   const appSettings = isGuestMode ? localAppSettings : firebaseAppSettings;
   const setAppSettings = isGuestMode ? setLocalAppSettings : async (updatedSettings: AppSettings | ((prev: AppSettings) => AppSettings)) => {
       if (!user || !isFirebaseConfigured) return;
       const userDocRef = doc(db, 'users', user.uid);
-
-       try {
-        await runTransaction(db, async (transaction) => {
-            const userDoc = await transaction.get(userDocRef);
-            const currentSettings = userDoc.exists() ? userDoc.data().appSettings || { paymentLink: '' } : { paymentLink: '' };
-            const finalSettings = typeof updatedSettings === 'function' ? updatedSettings(currentSettings) : updatedSettings;
-            transaction.set(userDocRef, { appSettings: finalSettings }, { merge: true });
-        });
-      } catch (e) {
-        console.error("Transaction failed: ", e);
-      }
+      const finalSettings = typeof updatedSettings === 'function' ? updatedSettings(firebaseAppSettings) : updatedSettings;
+      await updateDoc(userDocRef, { appSettings: finalSettings });
   };
 
   // Firebase auth listener
@@ -149,32 +131,48 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Firebase data listener for all user data
+  // Firebase data listeners for authenticated users
   useEffect(() => {
     if (!user || isGuestMode || !isFirebaseConfigured) {
       setFirebaseCustomers([]);
       setFirebaseAppSettings({ paymentLink: '' });
       return;
-    }
-
+    };
+    
     setLoading(true);
+    // Listener for main user data (customers, settings)
     const userDocRef = doc(db, 'users', user.uid);
-    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setFirebaseCustomers(data.customers || []);
-        setFirebaseAppSettings(data.appSettings || { paymentLink: '' });
-      } else {
-        setDoc(userDocRef, { customers: [], appSettings: { paymentLink: '' } }, { merge: true });
-      }
-      setLoading(false);
+    const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            setFirebaseCustomers(data.customers || []);
+            setFirebaseAppSettings(data.appSettings || { paymentLink: '' });
+        } else {
+            setDoc(userDocRef, { customers: [], appSettings: { paymentLink: '' } });
+        }
+        setLoading(false);
     }, (error) => {
-      console.error("Error fetching user data:", error);
-      setLoading(false);
+        console.error("Error fetching user data:", error);
+        setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeUser();
+    };
   }, [user, isGuestMode]);
+  
+  // Effect for generating daily reminders locally
+  useEffect(() => {
+    if (loading || (!isGuestMode && !user)) return;
+
+    const today = new Date().toISOString().split('T')[0]; // Get 'YYYY-MM-DD'
+    
+    if (remindersLastGenerated !== today && customers.length > 0) {
+        const newReminders = generateDailyReminders(customers, appSettings);
+        setDailyReminders(newReminders);
+        setRemindersLastGenerated(today);
+    }
+  }, [customers, appSettings, loading, user, isGuestMode, remindersLastGenerated, setDailyReminders, setRemindersLastGenerated]);
   
   const forceReminderGeneration = useCallback(() => {
     if (customers.length > 0) {
@@ -199,11 +197,6 @@ const App: React.FC = () => {
   }, [theme]);
 
   const handleSignOut = async () => {
-    // Fix: Clear user-specific local storage on sign out to prevent data leakage.
-    localStorage.removeItem('ro-track-daily-reminders');
-    localStorage.removeItem('ro-track-reminders-last-generated');
-    setDailyReminders([]); // Clear in-memory state as well
-
     if (isGuestMode) {
       setIsGuestMode(false);
     } else if (isFirebaseConfigured) {
@@ -221,28 +214,23 @@ const App: React.FC = () => {
     );
   }, [setDailyReminders]);
 
-  // Perf: Split context value into stable and dynamic parts to avoid re-rendering consumers unnecessarily.
-  const stableContextValue = useMemo(() => ({
-      setCustomers,
-      setView,
-      toggleTheme,
-      setAppSettings,
-      handleSignOut,
-      dismissReminder,
-      forceReminderGeneration
-  }), [setCustomers, setView, toggleTheme, setAppSettings, handleSignOut, dismissReminder, forceReminderGeneration]);
-
-  const contextValue = useMemo(() => ({
-      ...stableContextValue,
-      customers,
-      view,
-      theme,
-      appSettings,
-      user,
+  const contextValue = useMemo(() => ({ 
+      customers, 
+      setCustomers, 
+      view, 
+      setView, 
+      theme, 
+      toggleTheme, 
+      appSettings, 
+      setAppSettings, 
+      user, 
       isGuestMode,
       loading,
-      dailyReminders
-  }), [stableContextValue, customers, view, theme, appSettings, user, isGuestMode, loading, dailyReminders]);
+      handleSignOut,
+      dailyReminders,
+      dismissReminder,
+      forceReminderGeneration
+  }), [customers, view, theme, appSettings, user, isGuestMode, loading, dailyReminders, setCustomers, setAppSettings, setView, toggleTheme, handleSignOut, dismissReminder, forceReminderGeneration]);
 
   const renderContent = () => {
     if (loading) {
